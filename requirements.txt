@@ -1,0 +1,9 @@
+flask
+openpyxl
+pytz
+python-dotenv
+Werkzeug
+gunicorn
+Office365-REST-Python-Client>=2.3.12
+Flask-Session
+psutil>=5.9.0

@@ -1,0 +1,6 @@
+.env
+__pycache__/
+flask_session/
+.venv/
+application.log
+report_template.xlsx
