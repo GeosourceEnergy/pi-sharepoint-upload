@@ -1,11 +1,11 @@
 import os
 import logging
 import gc
-import logging
+import time
 from flask import (
     redirect,
-    url_for, flash, session,
-    Blueprint, render_template, jsonify
+    url_for, flash,
+    Blueprint, render_template, jsonify, current_app
 )
 
 from office365.runtime.auth.client_credential import ClientCredential
@@ -18,7 +18,6 @@ from config import (
 
 from pathlib import Path
 
-
 main_bp = Blueprint('main', __name__)
 
 
@@ -27,6 +26,8 @@ def index():
     return render_template('index.html')
 
 
+# Temporary funciton that  gets files from my local folder
+# Should be replaced with a path to the raspberry pi folder
 @main_bp.route('/upload_all_files', methods=['GET'])
 def upload_all_files():
     folder_path = r"C:\Users\DannyLiang-Geosource\Downloads\rig_test_folder"
@@ -35,7 +36,8 @@ def upload_all_files():
         raise FileNotFoundError(f"Folder {folder} does not exist")
     if not folder.is_dir():
         raise NotADirectoryError(f"Folder {folder} is not a directory")
-    allowed_ext = {".csv", ".xlsx", ".xls", ".pdf"}
+    # Update to files that are being uploaded, this should be all based on Amanda's messages
+    allowed_ext = {".csv", ".xlsx", ".xls"}
     uploaded = []
 
     for file in folder.iterdir():
@@ -45,44 +47,79 @@ def upload_all_files():
     # return jsonify([str(f) for f in uploaded])
     return uploaded
 
-
+# Function to save files to SharePoint, not automated for 7pm yet
 def save_to_sred(files):
     """
     Upload exactly the file the user uploaded to SharePoint.
     - CSV -> Data/{rig}/
     - Others -> Reports/{rig}/
     """
+    # tries to get curret_app.logger attribute, creates standard python logger after the current module __name__
+    logger = getattr(current_app, 'logger', logging.getLogger(__name__))
+
+    # Helper function to log to console and file
+    def log(msg):
+        if logger:
+            logger.info(msg)
+        print(msg, flush=True)
+
     rig = "360"  # figure out a way to get rig number from session, wait to get file name first
-    date = "10_15_2028"
+    date = "10_15_2028" # figure out a way to get date from session, wait to get file name first
+    log("Save to sred called") 
+    # Authenticating with Sharepoint site using app credentials
     ctx = ClientContext(SP_SITE_URL).with_credentials(
         ClientCredential(SP_CLIENT_ID, SP_CLIENT_SECRET)
     )
+    log(f"Client context created/authentication: {ctx}")
+
+    # Access target folder on sharepoint (/Documents/reports/rig_number)
+    # Update folder and path in .env file after final file names are created
     folder = ctx.web.get_folder_by_server_relative_url(
         f"{SP_DOC_LIBRARY}/Reports/{rig}"
     )
-    ctx.load(folder, ["Files"]).execute_query()
-    existing = [f.properties["Name"] for f in folder.files]
+    log(f"Folder created: {folder}")
 
+    # Load existing files in the folder
+    ctx.load(folder, ["Files"]).execute_query()
+    log(f"Folder loaded: {folder}")
+
+    # Stores existing filenames
+    existing = {f.properties["Name"] for f in folder.files}
+    log(f"Existing files: {existing}")
+    log(f"SharePoint: loaded {len(existing)} names")
+
+    # Iterate through files and upload to SharePoint
+    log(f"Starting file upload for files: {files}")
     for file in files:
         try:
-            p = file if isinstance(file, Path) else Path(file)
+            t_file = time.perf_counter() # Start timing for file processing
+            p = file if isinstance(file, Path) else Path(file) # Convert file to Path object if it's not already
             filename = p.name
-            ext = p.suffix.lower()
+            ext = p.suffix.lower() # file type
+            log(f"File: {filename} (ext: {ext}) (elapsed {time.perf_counter() - t_file:.3f}s)")
 
+            # Preparing new file name, if file already exists, add a number to the end
             new_name = filename
-            if file.name in existing:
-                base, e = os.path.splitext(filename)
-                i = 1
-                while filename in existing:
-                    new_name = f"{base} ({i}){e}"
-                    i += 1
+            base, e = os.path.splitext(filename)
+            i = 1
+            # Loop until name is unique in SharePoint folder
+            while new_name in existing:
+                new_name = f"{base} ({i}){e}"
+                i += 1
 
             # Read file bytes and upload
+            t_read = time.perf_counter()
             data = file.read_bytes()  # bytes
+            # Log size instead of raw bytes to prevent console overload
+            log(f"Read {len(data)} bytes "
+                f"(elapsed {time.perf_counter() - t_read:.3f}s)")
+
+            # Upload file to SharePoint
             folder.upload_file(new_name, data).execute_query()
             del data
+            log(f"Uploaded file: {new_name}")
             flash("Report saved to SR&ED successfully.", "success")
-            gc.collect()
+            gc.collect()  # Force garbage collection after large file uploads (optional safeguard)
 
         except Exception as e:
             logging.error("Error saving to SR&ED", exc_info=True)
