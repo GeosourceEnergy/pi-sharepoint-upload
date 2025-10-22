@@ -16,6 +16,7 @@ from config import (
     SP_CLIENT_ID, SP_CLIENT_SECRET
 )
 
+from process import file_formatted
 from pathlib import Path
 
 main_bp = Blueprint('main', __name__)
@@ -29,9 +30,9 @@ def index():
 # Temporary funciton that  gets files from my local folder
 # Should be replaced with a path to the raspberry pi folder
 @main_bp.route('/upload_all_files', methods=['GET'])
-def upload_all_files():
-    # folder_path = r"C:\Users\DannyLiang-Geosource\Downloads\rig_test_folder"
-    folder_path = r"/home/admin/Downloads/rig_test_folder"
+def get_files_from_folder():
+    folder_path = r"C:\Users\DannyLiang-Geosource\Downloads\rig_test_folder"
+    # folder_path = r"/home/admin/Downloads/rig_test_folder"
     folder = Path(folder_path).expanduser().resolve()
     if not folder.exists():
         raise FileNotFoundError(f"Folder {folder} does not exist")
@@ -110,7 +111,8 @@ def save_to_sred(files):
 
             # Read file bytes and upload
             t_read = time.perf_counter()
-            data = file.read_bytes()  # bytes
+            file_formatted = file.format()
+            data = file_formatted.read_bytes()  # bytes
             # Log size instead of raw bytes to prevent console overload
             log(f"Read {len(data)} bytes "
                 f"(elapsed {time.perf_counter() - t_read:.3f}s)")
@@ -132,7 +134,7 @@ def save_to_sred(files):
 def run_folder_batch():
     try:
         # 1) get everything in the folder
-        files = upload_all_files()
+        files = get_files_from_folder()
         uploaded = save_to_sred(files)  # 2) iterate & upload
 
         msg = [f"Uploaded {uploaded}"]
@@ -140,4 +142,10 @@ def run_folder_batch():
     except Exception as e:
         logging.exception("Batch upload failed")
         flash(f"Batch upload failed: {e}", "error")
+    return redirect(url_for('main.index'))
+
+@main_bp.route('/auto_save_sred', methods=['POST'])
+def auto_save_sred():
+    files = get_files_from_folder()
+    save_to_sred(files)
     return redirect(url_for('main.index'))
