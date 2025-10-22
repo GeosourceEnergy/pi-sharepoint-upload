@@ -31,8 +31,8 @@ def index():
 # Should be replaced with a path to the raspberry pi folder
 @main_bp.route('/upload_all_files', methods=['GET'])
 def get_files_from_folder():
-    folder_path = r"C:\Users\DannyLiang-Geosource\Downloads\rig_test_folder"
-    # folder_path = r"/home/admin/Downloads/rig_test_folder"
+    # folder_path = r"C:\Users\DannyLiang-Geosource\Downloads\rig_test_folder"
+    folder_path = r"/home/admin/Downloads/rig_test_folder"
     folder = Path(folder_path).expanduser().resolve()
     if not folder.exists():
         raise FileNotFoundError(f"Folder {folder} does not exist")
