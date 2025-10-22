@@ -1,12 +1,6 @@
 import os
-import logging
 import gc
 import time
-from flask import (
-    redirect,
-    url_for, flash,
-    Blueprint, render_template, jsonify, current_app
-)
 
 from office365.runtime.auth.client_credential import ClientCredential
 from office365.sharepoint.client_context import ClientContext
@@ -16,20 +10,9 @@ from config import (
     SP_CLIENT_ID, SP_CLIENT_SECRET
 )
 
-from process import file_formatted
 from pathlib import Path
 
-main_bp = Blueprint('main', __name__)
 
-
-@main_bp.route('/')
-def index():
-    return render_template('index.html')
-
-
-# Temporary funciton that  gets files from my local folder
-# Should be replaced with a path to the raspberry pi folder
-@main_bp.route('/upload_all_files', methods=['GET'])
 def get_files_from_folder():
     folder_path = r"C:\Users\DannyLiang-Geosource\Downloads\rig_test_folder"
     # folder_path = r"/home/admin/Downloads/rig_test_folder"
@@ -56,49 +39,33 @@ def save_to_sred(files):
     - CSV -> Data/{rig}/
     - Others -> Reports/{rig}/
     """
-    # tries to get curret_app.logger attribute, creates standard python logger after the current module __name__
-    logger = getattr(current_app, 'logger', logging.getLogger(__name__))
-
-    # Helper function to log to console and file
-    def log(msg):
-        if logger:
-            logger.info(msg)
-        print(msg, flush=True)
 
     rig = "360"  # figure out a way to get rig number from session, wait to get file name first
     date = "10_15_2028" # figure out a way to get date from session, wait to get file name first
-    log("Save to sred called") 
     # Authenticating with Sharepoint site using app credentials
     ctx = ClientContext(SP_SITE_URL).with_credentials(
         ClientCredential(SP_CLIENT_ID, SP_CLIENT_SECRET)
     )
-    log(f"Client context created/authentication: {ctx}")
 
     # Access target folder on sharepoint (/Documents/reports/rig_number)
     # Update folder and path in .env file after final file names are created
     folder = ctx.web.get_folder_by_server_relative_url(
         f"{SP_DOC_LIBRARY}/Reports/{rig}"
     )
-    log(f"Folder created: {folder}")
 
     # Load existing files in the folder
     ctx.load(folder, ["Files"]).execute_query()
-    log(f"Folder loaded: {folder}")
 
     # Stores existing filenames
     existing = {f.properties["Name"] for f in folder.files}
-    log(f"Existing files: {existing}")
-    log(f"SharePoint: loaded {len(existing)} names")
 
     # Iterate through files and upload to SharePoint
-    log(f"Starting file upload for files: {files}")
     for file in files:
         try:
             t_file = time.perf_counter() # Start timing for file processing
             p = file if isinstance(file, Path) else Path(file) # Convert file to Path object if it's not already
             filename = p.name
             ext = p.suffix.lower() # file type
-            log(f"File: {filename} (ext: {ext}) (elapsed {time.perf_counter() - t_file:.3f}s)")
 
             # Preparing new file name, if file already exists, add a number to the end
             new_name = filename
@@ -113,38 +80,18 @@ def save_to_sred(files):
             t_read = time.perf_counter()
             data = file.read_bytes()  # bytes
             # Log size instead of raw bytes to prevent console overload
-            log(f"Read {len(data)} bytes "
-                f"(elapsed {time.perf_counter() - t_read:.3f}s)")
 
             # Upload file to SharePoint
             folder.upload_file(new_name, data).execute_query()
             del data
-            log(f"Uploaded file: {new_name}")
-            flash("Report saved to SR&ED successfully.", "success")
             gc.collect()  # Force garbage collection after large file uploads (optional safeguard)
 
         except Exception as e:
-            logging.error("Error saving to SR&ED", exc_info=True)
-            flash(f"Error saving to SR&ED: {e}", "error")
-    return redirect(url_for('main.index'))
+            print(f"Error saving to SR&ED: {e}")
 
 
-@main_bp.route('/save_report_sred', methods=['POST'])
-def run_folder_batch():
-    try:
-        # 1) get everything in the folder
-        files = get_files_from_folder()
-        uploaded = save_to_sred(files)  # 2) iterate & upload
 
-        msg = [f"Uploaded {uploaded}"]
-        flash(" | ".join(msg), "success")
-    except Exception as e:
-        logging.exception("Batch upload failed")
-        flash(f"Batch upload failed: {e}", "error")
-    return redirect(url_for('main.index'))
-
-@main_bp.route('/auto_save_sred', methods=['POST'])
-def auto_save_sred():
+def run_auto_save_sred():
     files = get_files_from_folder()
     save_to_sred(files)
     return 

@@ -29,10 +29,11 @@
     <button type="submit">Upload files from local folder</button>
   </form>
 
-  <form action="{{ url_for('main.upload_all_files') }}" method="get">
+  <form action="{{ url_for('main.get_files_from_folder') }}" method="get">
     <button type="submit">File list</button>
   </form>
-  
+
+  <button id="auto-save-sred">Auto save to sred</button>
 
 </body>
 
