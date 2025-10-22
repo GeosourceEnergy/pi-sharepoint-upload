@@ -1,6 +1,7 @@
 import os
 import gc
 import time
+import subprocess
 
 from office365.runtime.auth.client_credential import ClientCredential
 from office365.sharepoint.client_context import ClientContext
@@ -16,6 +17,11 @@ from pathlib import Path
 def get_files_from_folder():
     folder_path = r"C:\Users\DannyLiang-Geosource\Downloads\rig_test_folder"
     # folder_path = r"/home/admin/Downloads/rig_test_folder"
+    # folder_path = "/media/username/BEA6-BBCE1/usb_share"
+    mount_path = r"/home/username/Desktop/mountdrive.sh"
+    mount_execute = subprocess.run(["bash", mount_path], capture_output=True, text=True)
+    if mount_execute.returncode != 0:
+        raise Exception(f"Failed to mount drive: {mount_execute.stderr}")
     folder = Path(folder_path).expanduser().resolve()
     if not folder.exists():
         raise FileNotFoundError(f"Folder {folder} does not exist")
@@ -33,6 +39,8 @@ def get_files_from_folder():
     return uploaded
 
 # Function to save files to SharePoint, not automated for 7pm yet
+
+
 def save_to_sred(files):
     """
     Upload exactly the file the user uploaded to SharePoint.
@@ -41,17 +49,19 @@ def save_to_sred(files):
     """
 
     rig = "360"  # figure out a way to get rig number from session, wait to get file name first
-    date = "10_15_2028" # figure out a way to get date from session, wait to get file name first
+    # figure out a way to get date from session, wait to get file name first
+    date = "10_15_2028"
     # Authenticating with Sharepoint site using app credentials
     ctx = ClientContext(SP_SITE_URL).with_credentials(
         ClientCredential(SP_CLIENT_ID, SP_CLIENT_SECRET)
     )
 
-    # Access target folder on sharepoint (/Documents/reports/rig_number)
     # Update folder and path in .env file after final file names are created
     folder = ctx.web.get_folder_by_server_relative_url(
         f"{SP_DOC_LIBRARY}/Reports/{rig}"
     )
+
+    unmount_path = r"/home/username/Desktop/unmountdrive.sh"
 
     # Load existing files in the folder
     ctx.load(folder, ["Files"]).execute_query()
@@ -62,10 +72,11 @@ def save_to_sred(files):
     # Iterate through files and upload to SharePoint
     for file in files:
         try:
-            t_file = time.perf_counter() # Start timing for file processing
-            p = file if isinstance(file, Path) else Path(file) # Convert file to Path object if it's not already
+            t_file = time.perf_counter()  # Start timing for file processing
+            # Convert file to Path object if it's not already
+            p = file if isinstance(file, Path) else Path(file)
             filename = p.name
-            ext = p.suffix.lower() # file type
+            ext = p.suffix.lower()  # file type
 
             # Preparing new file name, if file already exists, add a number to the end
             new_name = filename
@@ -88,10 +99,12 @@ def save_to_sred(files):
 
         except Exception as e:
             print(f"Error saving to SR&ED: {e}")
-
+    unmount_execute = subprocess.run(["bash", unmount_path], capture_output=True, text=True)
+    if unmount_execute.returncode != 0:
+        raise Exception(f"Failed to unmount drive: {unmount_execute.stderr}")
 
 
 def run_auto_save_sred():
     files = get_files_from_folder()
     save_to_sred(files)
-    return 
+    return
